@@ -151,7 +151,8 @@ func sendEmbed(title, description string, color int) error {
 	}
 
 	message := WebhookMessage{
-		Embeds: []Embed{embed},
+		Content: os.Getenv("WEBHOOK_MESSAGE_CONTENT"),
+		Embeds:  []Embed{embed},
 	}
 
 	jsonData, err := json.Marshal(message)
