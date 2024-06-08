@@ -116,7 +116,7 @@ func printLessonDetails(s *goquery.Selection, url string) {
 
 	if !exists {
 		fmt.Println("[" + time.Now().Format(time.DateTime) + "] Details: " + strings.Join(details, " | ") + " | URL: " + url)
-		
+
 		insertQuery := `INSERT INTO lessons (lessonNum, lessonName, substitute, room, additionalInfo, teacher, url) VALUES ($1, $2, $3, $4, $5, $6, $7)`
 		_, err := db.Exec(insertQuery, lessonNum, lessonName, substitute, room, additionalInfo, teacher, url)
 		if err != nil {
