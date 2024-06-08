@@ -2,16 +2,13 @@ package main
 
 import (
 	"bytes"
-	"context"
+	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/gocolly/colly/v2"
 	"github.com/joho/godotenv"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	_ "github.com/lib/pq"
 	"net/http"
 	"os"
 	"strings"
@@ -19,8 +16,7 @@ import (
 )
 
 var (
-	database *mongo.Database
-	ep       *mongo.Collection
+	db *sql.DB
 )
 
 func main() {
@@ -29,23 +25,34 @@ func main() {
 		panic("Error loading .env file")
 	}
 
-	client, err := mongo.Connect(context.TODO(), options.Client().
-		ApplyURI(os.Getenv("MONGO_URI")))
+	connStr := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable",
+		os.Getenv("POSTGRES_USER"),
+		os.Getenv("POSTGRES_PASSWORD"),
+		os.Getenv("POSTGRES_HOST"),
+		os.Getenv("POSTGRES_DB"))
+
+	db, err = sql.Open("postgres", connStr)
 	if err != nil {
 		panic(err)
 	}
-	defer func() {
-		if err := client.Disconnect(context.TODO()); err != nil {
-			panic(err)
-		}
-	}()
+	defer db.Close()
 
-	database = client.Database(os.Getenv("MONGO_DB"))
-	ep = database.Collection(os.Getenv("MONGO_COLLECTION"))
+	db.Exec(`CREATE TABLE IF NOT EXISTS lessons (
+    		id SERIAL PRIMARY KEY,
+    		lessonNum TEXT NOT NULL,
+    		lessonName TEXT NOT NULL,
+    		substitute TEXT NOT NULL,
+    		room TEXT NOT NULL,
+    		additionalInfo TEXT NOT NULL,
+    		teacher TEXT NOT NULL,
+    		url TEXT NOT NULL
+)`)
+
+	fmt.Println("Starting...")
 
 	for {
 		checkSchedules()
-		time.Sleep(3 * time.Second)
+		time.Sleep(5 * time.Minute)
 	}
 }
 
@@ -63,7 +70,7 @@ func checkSchedules() {
 			}
 
 			if strings.TrimSpace(s.Text()) != "" {
-				printLessonDetails(s)
+				printLessonDetails(s, e.Request.URL.String())
 			}
 			return true
 		})
@@ -90,8 +97,10 @@ func printScheduleForNextDay(c *colly.Collector) {
 	c.Visit(formattedURL)
 }
 
-func printLessonDetails(s *goquery.Selection) {
+func printLessonDetails(s *goquery.Selection, url string) {
 	details := strings.Split(s.Text(), "\n")
+
+	fmt.Println("[" + time.Now().Format(time.DateTime) + "] Details: " + strings.Join(details, " | ") + " | URL: " + url)
 
 	lessonNum := strings.TrimSpace(details[1])
 	lessonName := strings.TrimSpace(details[2])
@@ -100,26 +109,21 @@ func printLessonDetails(s *goquery.Selection) {
 	additionalInfo := strings.TrimSpace(details[5])
 	teacher := strings.TrimSpace(details[6])
 
-	res := ep.FindOne(context.TODO(), bson.D{
-		{"lessonNum", lessonNum},
-		{"lessonName", lessonName},
-		{"substitute", substitute},
-		{"room", room},
-		{"additionalInfo", additionalInfo},
-		{"teacher", teacher},
-	})
-	if errors.Is(res.Err(), mongo.ErrNoDocuments) {
-		_, err := ep.InsertOne(context.TODO(), bson.D{
-			{"lessonNum", lessonNum},
-			{"lessonName", lessonName},
-			{"substitute", substitute},
-			{"room", room},
-			{"additionalInfo", additionalInfo},
-			{"teacher", teacher},
-		})
+	query := `SELECT EXISTS (SELECT 1 FROM lessons WHERE lessonNum=$1 AND lessonName=$2 AND substitute=$3 AND room=$4 AND additionalInfo=$5 AND teacher=$6 AND url=$7)`
+	var exists bool
+	err := db.QueryRow(query, lessonNum, lessonName, substitute, room, additionalInfo, teacher, url).Scan(&exists)
+	if err != nil {
+		panic(err)
+	}
+
+	if !exists {
+		insertQuery := `INSERT INTO lessons (lessonNum, lessonName, substitute, room, additionalInfo, teacher, url) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+		_, err := db.Exec(insertQuery, lessonNum, lessonName, substitute, room, additionalInfo, teacher, url)
 		if err != nil {
 			panic(err)
 		}
+
+		fmt.Println("[" + time.Now().Format(time.DateTime) + "] [nr " + lessonNum + "] Added to DB!")
 
 		title := fmt.Sprintf("Lekcja: %s", lessonNum)
 		description := fmt.Sprintf("Lekcja: `%s`\nZa: `%s`\nSala: `%s`\nDodatkowa informacja: `%s`\nZ: `%s`",
@@ -129,6 +133,7 @@ func printLessonDetails(s *goquery.Selection) {
 		if err != nil {
 			panic("Error sending embed: " + err.Error())
 		}
+		fmt.Println("Sent to Discord!")
 	}
 }
 
