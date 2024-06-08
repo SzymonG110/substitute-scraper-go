@@ -100,8 +100,6 @@ func printScheduleForNextDay(c *colly.Collector) {
 func printLessonDetails(s *goquery.Selection, url string) {
 	details := strings.Split(s.Text(), "\n")
 
-	fmt.Println("[" + time.Now().Format(time.DateTime) + "] Details: " + strings.Join(details, " | ") + " | URL: " + url)
-
 	lessonNum := strings.TrimSpace(details[1])
 	lessonName := strings.TrimSpace(details[2])
 	substitute := strings.TrimSpace(details[3])
@@ -117,6 +115,8 @@ func printLessonDetails(s *goquery.Selection, url string) {
 	}
 
 	if !exists {
+		fmt.Println("[" + time.Now().Format(time.DateTime) + "] Details: " + strings.Join(details, " | ") + " | URL: " + url)
+		
 		insertQuery := `INSERT INTO lessons (lessonNum, lessonName, substitute, room, additionalInfo, teacher, url) VALUES ($1, $2, $3, $4, $5, $6, $7)`
 		_, err := db.Exec(insertQuery, lessonNum, lessonName, substitute, room, additionalInfo, teacher, url)
 		if err != nil {
