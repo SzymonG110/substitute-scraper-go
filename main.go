@@ -93,7 +93,9 @@ func printScheduleForNextDay(c *colly.Collector) {
 	if time.Now().Weekday() == time.Saturday {
 		daysToAdd = 2
 	}
-	formattedURL := fmt.Sprintf(os.Getenv("SCRAPE_URL"), time.Now().AddDate(0, 0, daysToAdd).Format("2006-01-02"))
+
+	date := time.Now().AddDate(0, 0, daysToAdd).Format("2006-01-02")
+	formattedURL := fmt.Sprintf(os.Getenv("SCRAPE_URL"), date)
 	c.Visit(formattedURL)
 }
 
@@ -126,8 +128,8 @@ func printLessonDetails(s *goquery.Selection, url string) {
 		fmt.Println("[" + time.Now().Format(time.DateTime) + "] [nr " + lessonNum + "] Added to DB!")
 
 		title := fmt.Sprintf("Lekcja: %s", lessonNum)
-		description := fmt.Sprintf("Lekcja: `%s`\nZa: `%s`\nSala: `%s`\nDodatkowa informacja: `%s`\nZ: `%s`",
-			lessonName, substitute, room, additionalInfo, teacher)
+		description := fmt.Sprintf("Lekcja: `%s`\nZa: `%s`\nSala: `%s`\nDodatkowa informacja: `%s `\nZ: `%s`\nDzien: %s",
+			lessonName, substitute, room, additionalInfo, teacher, url)
 
 		err = sendEmbed(title, description, 0x00ff00)
 		if err != nil {
